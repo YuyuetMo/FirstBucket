@@ -103,7 +103,7 @@ FirstBucket 不替你炒股，也不做投资建议。它做的事很简单：
 ### 安装依赖
 
 ```bash
-git clone https://github.com/<your-username>/FirstBucket.git
+git clone https://github.com/YuyuetMo/FirstBucket.git
 cd FirstBucket
 npm install
 ```
