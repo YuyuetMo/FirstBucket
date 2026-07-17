@@ -1,0 +1,119 @@
+classDiagram
+    class UserProfile {
+        +string id
+        +string name
+        +number age
+        +number monthlyIncome
+        +number incomeAnnualBonus
+        +number incomeOther
+        +number currentSavings
+        +Debt[] debts
+        +number fixedExpenses
+        +number variableExpenses
+        +Goal[] goals
+        +RiskProfile riskProfile
+        +InsuranceStatus insurance
+        +number investHorizonMonths
+        +string createdAt
+        +string updatedAt
+        +PresetId preset
+        +string[] dismissedWarnings
+        +createEmptyProfile(id) UserProfile
+        +totalMonthlyIncome(p) number
+        +monthlyDisposable(p) number
+    }
+
+    class Rule {
+        +RuleId id
+        +string name
+        +string description
+        +string[] tags
+        +Allocation[] allocations
+        +applicability(p) number
+    }
+    class Allocation {
+        +string label
+        +number pct
+        +string bucketKey
+        +string color
+    }
+    class Bucket {
+        +string id
+        +string ruleId
+        +string name
+        +string color
+        +number monthlyAmount
+        +string note
+    }
+
+    class WarnThresholds {
+        <<const>>
+        +ConflictThreshold conflict
+        +DeviationThreshold deviation
+    }
+    class ConflictThreshold {
+        +number ageMin
+        +number equityRatioMax
+    }
+    class DeviationThreshold {
+        +number totalExpenseRatioMax
+        +number bucketRatioTolerance
+    }
+
+    class TermDef {
+        +string id
+        +string label
+        +string short
+        +string origin
+    }
+
+    class ReviewRule {
+        +string id
+        +string tag
+        +test(ctx) ReviewHit
+    }
+    class ReviewContext {
+        +UserProfile profile
+        +PlanView plan
+        +HealthResult health
+        +Rule rule
+    }
+    class ReviewHit {
+        +string tag
+        +string text
+    }
+    class HealthResult {
+        +number score
+        +Badge[] badges
+        +number emergencyMultiple
+    }
+
+    class PresetDef {
+        +PresetId id
+        +string label
+        +RuleId[] recommendRules
+        +map~RuleId,number~ weights
+    }
+
+    class PlanView {
+        +Bucket[] buckets
+        +number totalMonthly
+        +number futureValue
+        +number reachMonths
+        +number equityRatio
+    }
+
+    UserProfile "1" --> "0..1" PresetDef : preset
+    Rule "1" *-- "2..6" Allocation
+    Bucket ..> Rule : ruleId 引用
+    WarnThresholds *-- ConflictThreshold
+    WarnThresholds *-- DeviationThreshold
+    ReviewRule ..> ReviewContext : 输入
+    ReviewRule ..> ReviewHit : 输出
+    ReviewContext --> UserProfile
+    ReviewContext --> PlanView
+    ReviewContext --> HealthResult
+    ReviewContext --> Rule
+    PlanView *-- "2..6" Bucket
+    PresetDef ..> Rule : recommendRules 引用
+    TermDef ..> Rule : 法则起源(origin)

@@ -1,0 +1,104 @@
+sequenceDiagram
+    autonumber
+    %% =====================================================================
+    %% 流程一：五步财务画像（C6 / C7 / C8）
+    %% =====================================================================
+    box rgb(240,242,245) 五步画像流程（T06/T07/T08）
+    participant U as 用户
+    participant W as FiveStepWizard(Onboarding)
+    participant S as useAppStore
+    participant C as Classifier(分类模块)
+    participant M as monthlyDisposable(user.ts)
+    participant T as allocateThreeBuckets
+    participant D as Dashboard(ProfilePage)
+    end
+
+    U->>W: 打开应用(onboarded=false)
+    Note over W: Step1 收入
+    U->>W: 输入 税前/社保公积金/其他收入
+    W->>W: monthlyIncome = gross − social − otherDeductions + otherIncome
+    W->>S: updateProfile({grossMonthlyIncome, socialInsuranceDeduction, monthlyIncome,...})
+    S-->>W: profile 落盘(reply)
+
+    Note over W: Step2 固定支出
+    U->>W: 录入 房租/伙食/交通/水电/保险/教育
+    W->>S: updateProfile({fixedExpenseItems, fixedExpenses})
+
+    Note over W: Step3 弹性支出 + 智能分类(C7)
+    U->>W: 输入 "生病 800" / "演唱会 500"
+    W->>C: classify("生病 800")
+    C-->>W: systemCategory = medical-emergency
+    W->>C: toMonthlyAmount({amount:800, frequency:"once"}) → 800/12
+    U->>W: 拖拽改类别(可选)
+    W->>C: rememberOverride(keyword, userCategory)
+    C-->>W: 写 localStorage(fb_classify_memory)
+    W->>S: updateProfile({variableExpenseItems, variableExpenses})
+
+    Note over W: Step4 财务画像
+    W->>M: monthlyDisposable(profile)
+    M-->>W: D = 收入 − 固定 − 弹性 − 负债
+
+    Note over W: Step5 三桶分配(C8)
+    W->>T: allocateThreeBuckets(profile)
+    T->>M: monthlyDisposable(profile)
+    T-->>W: {reserve, flexible, free, reserveTarget, reserveMet}
+    W->>S: setOnboarded(true)
+    S-->>D: 跳转 "/" 展示三桶 + 画像
+    end
+
+    %% =====================================================================
+    %% 流程二：法则选中 → 方案 → 末值（A1 / A2 / C9）
+    %% =====================================================================
+    box rgb(245,247,250) 单法则方案流程（T01/T02/T09）
+    participant RP as RulesPage
+    participant ST as useAppStore
+    participant PP as PlanPage
+    participant AR as applyRule(engine.ts)
+    participant IM as investmentMonthlyOf(metrics.ts)
+    participant CS as compoundSeries(engine.ts)
+    end
+
+    U->>RP: 点击某法则卡片
+    RP->>ST: setSelectedRule(ruleId)
+    ST-->>PP: selectedRuleId 更新(订阅)
+    PP->>PP: getRule(selectedRuleId)
+    PP->>AR: applyRule(profile, rule)
+    Note over AR: scope==='invest' ? base=investmentPool : base=totalMonthlyIncome
+    AR-->>PP: Bucket[] (含 bucketKey)
+    PP->>IM: investmentMonthlyOf(rule, profile)
+    IM->>AR: applyRule(profile, rule)
+    IM-->>IM: 过滤 bucketKey ∈ INVESTMENT_BUCKET_KEYS → 求和
+    IM-->>PP: 投资桶月额
+    PP->>CS: compoundSeries(投资桶月额, annualRateFor(risk), months)
+    CS-->>PP: futureValue = 末点值
+
+    %% =====================================================================
+    %% 流程三：组合计算（D11 两层流水线）
+    %% =====================================================================
+    box rgb(238,242,248) 组合引擎流程（T10）
+    participant UI as PlanPage/ComparePanel
+    participant COM as applyRules(combine.ts)
+    participant L1 as 层1 income: applyRule
+    participant L2 as 层2 invest: applyRule
+    participant WLM as weightedMerge
+    participant CS2 as compoundSeries
+    end
+
+    U->>UI: 多选 (≤1 income + ≤2 invest, 排除 withdraw)
+    UI->>COM: applyRules(ruleIds, profile, {weights?})
+    loop 每个 income 法则
+        COM->>L1: applyRule(profile, rule, totalMonthlyIncome)
+        L1-->>COM: Bucket[](按 CATEGORY_MAP 归一化)
+    end
+    COM->>WLM: 收入层等权加权平均 → 各类目月额
+    WLM-->>COM: 投资池 = 储蓄类目 + 投资类目月额
+    Note over COM: 无 income 法则时 投资池 = monthlyDisposable(profile)
+    loop 每个 invest 法则
+        COM->>L2: applyRule(profile, rule, baseOverride=投资池)
+        L2-->>COM: Bucket[](按 ASSET_MAP 归一化)
+    end
+    COM->>WLM: 投资层等权加权平均 → 资产桶月额
+    WLM-->>COM: 资产桶[]
+    COM->>CS2: compoundSeries(资产桶月额之和, rate, months)
+    CS2-->>COM: futureValue(随组合变化)
+    COM-->>UI: PlanView(合并 buckets + futureValue)

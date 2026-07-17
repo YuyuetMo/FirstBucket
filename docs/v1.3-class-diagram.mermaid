@@ -1,0 +1,182 @@
+classDiagram
+    %% ===== 核心领域（@core/domain）=====
+    class UserProfile {
+        +string id
+        +number monthlyIncome
+        +number fixedExpenses
+        +number variableExpenses
+        +number currentSavings
+        +RiskProfile riskProfile
+        +number investHorizonMonths
+        +PresetId preset
+        +Debt[] debts
+    }
+
+    class Rule {
+        +RuleId|string id
+        +string name
+        +Allocation[] allocations
+        +'income'|'invest'|'withdraw' scope
+        +PresetId[] lifeStages  %% v1.3 新增必填
+        +boolean custom         %% v1.3 新增可选
+        +(p: UserProfile) => number applicability
+    }
+
+    class Allocation {
+        +string label
+        +number pct
+        +string bucketKey
+        +string color
+    }
+
+    class PresetId {
+        <<enumeration>>
+        student
+        newgrad
+        single
+        dualincome
+        family
+        preretire
+    }
+
+    %% ===== 引擎与派生（features）=====
+    class Engine {
+        +applyRule(profile, rule, baseOverride?) Bucket[]
+        +compoundSeries(monthly, rate, months) CompoundPoint[]
+        +monthlyDisposable(p) number
+        +investmentPool(p) number
+    }
+
+    class Metrics {
+        +investmentMonthlyOf(rule, profile) number
+        +buildPlanView(profile, rule) PlanView
+    }
+
+    class Combine {
+        +applyRules(ruleIds, profile, opts?) PlanView
+        -getRule(id) Rule
+    }
+
+    class ThreeBuckets {
+        +allocateThreeBuckets(profile) ThreeBuckets
+    }
+
+    class Scenario {
+        +WhatIfScenario
+        +deriveScenarioProfile(base, s) UserProfile  %% v1.3 新增纯函数
+    }
+
+    class CustomRules {
+        +loadCustomRules() Rule[]
+        +saveCustomRule(input) Rule
+        +updateCustomRule(id, input) Rule
+        +deleteCustomRule(id) void
+        -LS fb_custom_rules
+    }
+
+    class Presets {
+        +getPreset(id) PresetDef
+        +recommendRules RuleId[]
+    }
+
+    %% ===== 状态层（stores）=====
+    class AppStore {
+        +UserProfile profile
+        +string selectedRuleId
+        +UserProfile tempProfile  %% What-if 内存态
+        +setSelectedRule(id)
+        +setTempProfile(p)
+        +updateProfile(patch)
+    }
+
+    %% ===== 展示组件（pages/features）=====
+    class RulesPage {
+        +三档重排(推荐/适合/低关联)
+        +双 scope 分组 + 横线
+        +CustomRuleModal 入口
+    }
+
+    class PlanPage {
+        +PlanTab: scheme|compare|whatif
+        +三 Tab 骨架
+        +ExecutionList 嵌入
+    }
+
+    class VisualizerPage {
+        +基数 investmentMonthlyOf
+        +图旁说明行
+    }
+
+    class TermPopover {
+        -移除 hover 内 origin
+        +hover 比例条
+        +右键入口
+    }
+
+    class RulesInfoTip {
+        +hover 小 tooltip
+    }
+
+    class RuleOriginModal {
+        +起源故事详情
+    }
+
+    class ExecutionList {
+        +备用金/灵活/自由
+        +投资子分配
+    }
+
+    class CustomRuleModal {
+        +动态桶行
+        +sum(pct)===100 校验
+    }
+
+    class WhatIfPanel {
+        +场景杠杆参数
+        +deriveScenarioProfile
+    }
+
+    class TitleBar {
+        +span 符号 ×/−/▢
+    }
+
+    %% ===== 关系 =====
+    Rule "1" *-- "many" Allocation
+    Rule ..> PresetId : lifeStages 取值
+    UserProfile ..> PresetId : preset
+
+    Engine ..> UserProfile : 纯函数输入
+    Engine ..> Rule : applyRule 输入
+    Metrics ..> Engine : 复用
+    Metrics ..> UserProfile
+    Metrics ..> Rule
+    Combine ..> Engine : 复用 applyRule/compoundSeries
+    Combine ..> Rule : getRule 解析(含自定义)
+    ThreeBuckets ..> UserProfile
+    Scenario ..> UserProfile : 派生(纯函数)
+    CustomRules ..> Rule : 读写
+    CustomRules ..> Combine : 经 getRule 注入
+
+    Presets ..> Rule : recommendRules 影响推荐档
+    AppStore ..> UserProfile
+    AppStore ..> CustomRules : 不持久化(仅 localStorage)
+
+    RulesPage ..> Rule : 读取+自定义合并
+    RulesPage ..> Presets : getPreset(preset)
+    RulesPage ..> CustomRuleModal
+    RulesPage ..> TermPopover
+    TermPopover ..> RulesInfoTip
+    TermPopover ..> RuleOriginModal
+    PlanPage ..> AppStore : selectedRuleId/tempProfile
+    PlanPage ..> Metrics : buildPlanView
+    PlanPage ..> Combine : applyRules
+    PlanPage ..> ExecutionList
+    PlanPage ..> WhatIfPanel
+    PlanPage ..> ComparePanel
+    VisualizerPage ..> Metrics : investmentMonthlyOf
+    VisualizerPage ..> Engine : compoundSeries
+    ExecutionList ..> ThreeBuckets : allocateThreeBuckets
+    ExecutionList ..> Metrics : investmentMonthlyOf 拆解
+    WhatIfPanel ..> Scenario : deriveScenarioProfile
+    WhatIfPanel ..> AppStore : setTempProfile(内存态)
+    TitleBar ..> window.FirstBucket : close/minimize/toggleMaximize(ipc 已通,不改)

@@ -1,0 +1,86 @@
+%% ===== R1 法则按人生阶段动态筛选 + 推荐随阶段变 =====
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant PP as PresetPicker
+    participant S as useAppStore
+    participant RP as RulesPage
+    participant PR as getPreset(presets.ts)
+    participant GRS as getRulesByScope(rule.ts)
+    participant GT as getTerm(terms.ts)
+
+    U->>PP: 选择人生阶段 preset
+    PP->>S: updateProfile({preset})
+    S-->>RP: profile.preset 变更
+    RP->>PR: getPreset(preset).recommendRules
+    PR-->>RP: recIds[]
+    loop 每条法则 r ∈ RULES(+自定义)
+        RP->>RP: 判定三档
+        alt preset ∈ r.lifeStages 且 r.id ∈ recIds
+            RP->>RP: 归入「推荐」档（置顶）+「为你推荐」标签
+        else preset ∈ r.lifeStages 且 r.id ∉ recIds
+            RP->>RP: 归入「适合」档
+        else preset ∉ r.lifeStages
+            RP->>RP: 归入「低关联」档（灰显虚线，仍可见可点）
+        end
+    end
+    RP->>GRS: getRulesByScope('income'|'invest')
+    GRS-->>RP: 两组法则（组内按三档排序）
+    RP->>GT: 卡片 ❓ 取 term.short/origin
+    RP-->>U: 渲染「收入级/投资级」两块 + 横线 + 三档排序
+
+%% ===== R8 自定义法则入库 + 参与组合 =====
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant RP as RulesPage
+    participant CM as CustomRuleModal
+    participant CR as customRules.ts
+    participant LS as localStorage(fb_custom_rules)
+    participant GR as getRule(rule.ts)
+    participant CB as Combine.applyRules
+    participant PP as PlanPage
+
+    U->>RP: 点击「＋ 自定义法则」
+    RP->>CM: 打开创建面板
+    U->>CM: 填名称 + 动态桶行(桶名/比例%) + scope
+    CM->>CM: 实时 sum(pct)
+    alt sum !== 100
+        CM-->>U: 保存禁用 + 提示差值
+    else sum === 100
+        U->>CM: 点保存
+        CM->>CR: saveCustomRule(input)
+        CR->>LS: 写入 fb_custom_rules
+        CR-->>RP: 返回 Rule(custom:true)
+        RP->>GR: 读取时 loadCustomRules() 并入 12 内置
+        GR-->>RP: 法则列表(含自定义) + 「自定义」标签
+        U->>RP: 选中自定义法则
+        RP->>PP: setSelectedRule('custom-xxx')
+        PP->>GR: getRule('custom-xxx')
+        GR-->>CB: 解析到自定义 Rule(scope 决定层)
+        CB-->>PP: 参与 buildPlanView/applyRules 无差别
+
+%% ===== R4 What-if 推演参数隔离时序 =====
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant PL as PlanPage
+    participant WIP as WhatIfPanel
+    participant SC as scenario.deriveScenarioProfile
+    participant S as useAppStore(tempProfile)
+    participant BV as buildPlanView/applyRules
+
+    U->>PL: 切到「What-if 推演」Tab
+    PL->>PL: 渲染 WhatIfPanel(本 Tab useState)
+    U->>WIP: 调 年薪涨幅/通胀率/大额支出时间/失业月份
+    WIP->>SC: deriveScenarioProfile(profile, scenario)
+    SC-->>WIP: derived UserProfile(纯函数,不改 base)
+    WIP->>S: setTempProfile(derived)  %% 仅内存态
+    Note over S: 绝不 updateProfile/saveProfile
+    PL->>PL: effective = tempProfile ?? profile
+    PL->>BV: buildPlanView(effective, rule)
+    BV-->>PL: 预览随参数重算（基准方案 Tab 数据不变）
+    U->>PL: 切走 What-if Tab / 关闭
+    PL->>S: setTempProfile(null)
+    S-->>PL: 基准方案回到真实 profile（不被污染）
+    Note over PL,S: R4 通胀率=单 Tab 临时杠杆 ≠ E批 M4 全局开关

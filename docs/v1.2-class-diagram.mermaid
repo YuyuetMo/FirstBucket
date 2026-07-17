@@ -1,0 +1,213 @@
+classDiagram
+    %% ===== 核心域模型 =====
+    class UserProfile {
+        +string id
+        +number monthlyIncome
+        +number incomeAnnualBonus
+        +number incomeOther
+        +number currentSavings
+        +Debt[] debts
+        +number fixedExpenses
+        +number variableExpenses
+        +Goal[] goals
+        +RiskProfile riskProfile
+        +InsuranceStatus insurance
+        +number investHorizonMonths
+        +PresetId preset
+        %% —— v1.2 扩展（C6/R6，增量兼容）——
+        +number grossMonthlyIncome
+        +number socialInsuranceDeduction
+        +number otherDeductions
+        +number otherIncome
+        +ExpenseItem[] fixedExpenseItems
+        +ExpenseItem[] variableExpenseItems
+        +totalMonthlyIncome(p) number
+        +monthlyDisposable(p) number
+    }
+
+    class ExpenseItem {
+        +string id
+        +string label
+        +number amount
+        +("once"|"monthly"|"annual") frequency
+        +ExpenseCategory systemCategory
+        +ExpenseCategory userCategory
+        +boolean remembered
+    }
+
+    class ExpenseCategory {
+        <<enum>>
+        medical-emergency
+        entertainment
+        social
+        home-repair
+        other
+    }
+
+    class Rule {
+        +RuleId id
+        +string name
+        +string description
+        +string[] tags
+        +Allocation[] allocations
+        +RuleScope scope
+        +applicability(p) number
+    }
+
+    class RuleScope {
+        <<enum>>
+        income
+        invest
+        withdraw
+    }
+
+    class Allocation {
+        +string label
+        +number pct
+        +string bucketKey
+        +string color
+    }
+
+    class Bucket {
+        +string id
+        +string ruleId
+        +string name
+        +string color
+        +number monthlyAmount
+        +string note
+        +string bucketKey
+    }
+
+    class PlanView {
+        +Bucket[] buckets
+        +number totalMonthly
+        +number futureValue
+        +number reachMonths
+        +number equityRatio
+    }
+
+    class ThreeBuckets {
+        +number reserve
+        +number flexible
+        +number free
+        +number total
+        +number reserveTarget
+        +boolean reserveMet
+    }
+
+    class Badge {
+        +string id
+        +string icon
+        +string label
+        +string desc
+        +boolean earned
+    }
+
+    %% ===== 引擎 / 工具（纯函数） =====
+    class BudgetEngine {
+        <<module>>
+        +applyRule(profile, rule, baseOverride?) Bucket[]
+        +compoundSeries(monthly, rate, months) CompoundPoint[]
+    }
+
+    class Metrics {
+        <<module>>
+        +buildPlanView(profile, rule) PlanView
+        +investmentMonthlyOf(rule, profile) number
+        +INVESTMENT_BUCKET_KEYS Set~string~
+        +annualRateFor(risk) number
+        +computeEmergencyFundReachMonths(profile, save) number
+    }
+
+    class Combine {
+        <<module>>
+        +applyRules(ruleIds, profile, opts?) PlanView
+        +CATEGORY_MAP Map
+        +ASSET_MAP Map
+        +weightedMerge(buckets, weights) Bucket[]
+    }
+
+    class ThreeBucketAlloc {
+        <<module>>
+        +allocateThreeBuckets(profile) ThreeBuckets
+    }
+
+    class Classifier {
+        <<module>>
+        +KEYWORD_MAP Record
+        +classify(text) ExpenseCategory
+        +toMonthlyAmount(item) number
+        +normalize(raw) ExpenseItem
+        +rememberOverride(kw, cat)
+        +loadOverride(kw) ExpenseCategory
+    }
+
+    class Health {
+        <<module>>
+        +computeHealthScore(p) number
+        +computeBadges(p, ctx) Badge[]
+        +emergencyMultiple(p) number
+    }
+
+    %% ===== 状态 / UI =====
+    class AppStore {
+        <<zustand>>
+        -UserProfile profile
+        -Bucket[] buckets
+        -string selectedRuleId
+        -boolean onboarded
+        +setSelectedRule(id)
+        +updateProfile(patch)
+        +saveBuckets(bs)
+    }
+
+    class TitleBar {
+        <<component>>
+        -onMinimize()
+        -onClose()
+        -onToggleMaximize()
+    }
+
+    class FiveStepWizard {
+        <<component>>
+        -step number
+        -onDone()
+    }
+
+    %% ===== 关系 =====
+    UserProfile "1" *-- "0..*" ExpenseItem : fixed/variable
+    ExpenseItem ..> ExpenseCategory : category
+    Rule "1" *-- "1..*" Allocation
+    Rule ..> RuleScope : scope
+    Allocation ..> Bucket : 生成(bucketKey)
+    Rule ..> BudgetEngine : applyRule
+    BudgetEngine ..> Bucket : 产出
+    BudgetEngine ..> Metrics : compoundSeries
+    Metrics ..> PlanView : buildPlanView/futureValue
+    Combine ..> BudgetEngine : 复用 applyRule
+    Combine ..> PlanView : 组合 PlanView
+    ThreeBucketAlloc ..> ThreeBuckets : 产出
+    ThreeBucketAlloc ..> UserProfile : monthlyDisposable
+    Classifier ..> ExpenseItem : normalize
+    Classifier ..> ExpenseCategory : classify
+    Health ..> Badge : computeBadges
+    Health ..> UserProfile : 派生指标
+    AppStore o-- UserProfile : profile
+    AppStore o-- Bucket : buckets
+    AppStore ..> Metrics : buildPlanView(间接)
+    FiveStepWizard ..> UserProfile : updateProfile
+    FiveStepWizard ..> Classifier : Step3 分类
+    FiveStepWizard ..> ThreeBucketAlloc : Step5 三桶
+    TitleBar ..> AppStore : 仅窗口控制(经 ipc)
+    PlanPage --> Metrics : buildPlanView
+    PlanPage --> Combine : applyRules(组合)
+    ComparePanel --> Combine : applyRules(对比)
+
+    class PlanPage {
+        <<component>>
+    }
+    class ComparePanel {
+        <<component>>
+    }
+    PlanPage ..> AppStore : selectedRuleId
+    ComparePanel ..> AppStore : profile

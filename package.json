@@ -1,0 +1,56 @@
+{
+  "name": "firstbucket",
+  "version": "2.0.0",
+  "private": true,
+  "description": "FirstBucket — 面向年轻人的桌面端理财规划客户端",
+  "main": "dist-electron/main.js",
+  "author": "FirstBucket Team",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "rebuild:native": "electron-rebuild -f -w better-sqlite3",
+    "pack": "npm run build && electron-builder --publish never",
+    "dist": "npm run build && electron-builder --publish never",
+    "build:win": "node scripts/build-win.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "echarts": "^5.5.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^31.7.7",
+    "electron-builder": "^25.1.8",
+    "electron-rebuild": "^3.2.9",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.8",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6"
+  },
+  "build": {
+    "appId": "com.firstbucket.app",
+    "productName": "FirstBucket",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "win": {
+      "target": [
+        "dir"
+      ],
+      "signAndEditExecutable": false,
+      "artifactName": "FirstBucket-${version}.${ext}"
+    }
+  }
+}
