@@ -7,6 +7,9 @@
 [![React](https://img.shields.io/badge/React-18.x-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)]()
+[![Release](https://img.shields.io/badge/release-v2.1.0-blue)](https://github.com/YuyuetMo/FirstBucket/releases)
+
+> 📦 **Windows 桌面安装包**：前往 [Releases](https://github.com/YuyuetMo/FirstBucket/releases) 下载 `FirstBucket_v2.1.zip`，解压后双击 `FirstBucket.exe` 即可运行（无需 Node 环境）。
 
 ---
 
@@ -40,6 +43,9 @@ FirstBucket 不替你炒股，也不做投资建议。它做的事很简单：
 | **💾 本地优先** | 数据存于本地 SQLite（better-sqlite3），不上云、不收集 |
 | **🌗 明暗主题** | 亮色 / 暗色 / 跟随系统，一键切换 |
 | **📤 数据导出** | 支持 CSV / PDF 导出 |
+| **✍️ 实际金额对比** | 方案页逐桶填写「本月实际」，对比法则建议：消费类显示「省 / 超」，储蓄/投资/保险显示「多存 / 还差」（正向反馈） |
+| **🪣 三桶并行积累** | 保命钱三桶支持并行：应急金投入比例 / 灵活比例双滑块可调，不再强制先存满应急金 |
+| **🔄 检查更新** | 一键跳转 GitHub Releases，应用内外部链接用系统默认浏览器打开 |
 
 ---
 
@@ -64,7 +70,7 @@ FirstBucket 不替你炒股，也不做投资建议。它做的事很简单：
 
 | 桶 | 含义 | 目标 |
 |----|------|------|
-| **备用金桶** | 固定不动的应急安全垫 | 目标 = `备用金月数 × (固定+变动)`，存满后其余可转其它桶 |
+| **备用金桶** | 固定不动的应急安全垫 | 目标 = `备用金月数 × 月消费`；与灵活/自由桶**并行**累积（投入比例可调） |
 | **灵活应急金** | 可允许被突发开销（医疗/人情）花完 | 保留，补弹性缺口 |
 | **自由支配** | 剩余全部可自由安排（娱乐/自我提升） | — |
 
