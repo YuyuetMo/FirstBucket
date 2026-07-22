@@ -1,6 +1,6 @@
 {
   "name": "firstbucket",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "FirstBucket — 面向年轻人的桌面端理财规划客户端",
   "main": "dist-electron/main.js",
