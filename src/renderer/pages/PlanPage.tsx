@@ -12,12 +12,17 @@ import { ReviewList } from '../features/review/ReviewList';
 import { WhatIfPanel } from '../features/simulate/WhatIfPanel';
 import { ComparePanel } from '../features/compare/ComparePanel';
 import { ExecutionList } from '../features/plan/ExecutionList';
+import { RateSelector } from '../components/RateSelector';
+import { actualForBucket, bucketKind, configNote, disposableOf } from '../features/plan/comparison';
+import { getRuleActuals, setRuleActual } from '../features/plan/ruleActuals';
+import { CONSUMPTION_KEYS } from '../features/budget/waterfall';
+import { effectiveIncome } from '../@core/domain/user';
+import { isInvestmentKey } from '../features/plan/investmentBuckets';
 import { detectDeviation } from '../features/warn/deviation';
 import type { UserProfile, RiskProfile } from '../@core/domain/user';
 import type { Bucket } from '../@core/domain/bucket';
 
 type PlanTab = 'scheme' | 'compare' | 'whatif';
-const RATE: Record<string, number> = { conservative: 0.03, balanced: 0.05, aggressive: 0.07 };
 
 export function PlanPage() {
   const profile = useAppStore((s) => s.profile);
@@ -33,10 +38,9 @@ export function PlanPage() {
 
   // A: 可折叠财务资料面板
   const [financeOpen, setFinanceOpen] = useState(false);
-  // A: 面板内编辑态
+  // A: 面板内编辑态（v1.7 精简：月收入、税后收入、储蓄、风险偏好）
   const [editIncome, setEditIncome] = useState('');
-  const [editFixed, setEditFixed] = useState('');
-  const [editVariable, setEditVariable] = useState('');
+  const [editNetIncome, setEditNetIncome] = useState('');
   const [editSavings, setEditSavings] = useState('');
   const [editRisk, setEditRisk] = useState<RiskProfile>('balanced');
 
@@ -44,17 +48,15 @@ export function PlanPage() {
   useEffect(() => {
     if (profile && !editIncome) {
       setEditIncome(String(profile.monthlyIncome || ''));
-      setEditFixed(String(profile.fixedExpenses || ''));
-      setEditVariable(String(profile.variableExpenses || ''));
+      setEditNetIncome(String(profile.netMonthlyIncome ?? profile.monthlyIncome ?? ''));
       setEditSavings(String(profile.currentSavings || ''));
       setEditRisk(profile.riskProfile || 'balanced');
     }
   }, [profile]);
 
-  // E: 空 profile 快速录入态
+  // E: 空 profile 快速录入态（v1.7：月收入 + 税后收入 + 风险偏好）
   const [quickIncome, setQuickIncome] = useState('');
-  const [quickFixed, setQuickFixed] = useState('');
-  const [quickVariable, setQuickVariable] = useState('');
+  const [quickNetIncome, setQuickNetIncome] = useState('');
   const [quickRisk, setQuickRisk] = useState<RiskProfile>('balanced');
 
   // T10 组合模式
@@ -107,9 +109,9 @@ export function PlanPage() {
   // 合规：含 ETF/基金 文案需提示「非投资建议」
   const needsTip = rule && mode === 'single' ? requiresEtfTooltip(rule.description) : false;
 
-  // R5：图旁说明用投资桶月额 + 年化利率
+  // R5：图旁说明用投资桶月额 + 年化利率（v1.6：优先用户手动设的 compoundAnnualRate）
   const investMonthly = rule && effective ? investmentMonthlyOf(rule, effective) : 0;
-  const annualRate = effective ? RATE[effective.riskProfile] ?? 0.05 : 0.05;
+  const annualRate = effective ? effective.compoundAnnualRate ?? 0.05 : 0.05;
 
   useEffect(() => {
     setSaved(false);
@@ -131,16 +133,12 @@ export function PlanPage() {
           <div className="settings-group-header">财务资料</div>
           <div className="settings-group-body">
             <div className="settings-row">
-              <div><div className="settings-label">月收入（元）</div></div>
-              <input className="form-input" style={{ width: '220px' }} type="number" min={0} value={quickIncome} onChange={e => setQuickIncome(e.target.value)} placeholder="如 15000" />
+              <div><div className="settings-label">月收入（元）<span style={{ color: 'var(--color-text-muted)', fontSize: '11.5px' }}>（税前）</span></div></div>
+              <input className="form-input" style={{ width: '220px' }} type="number" min={0} value={quickIncome} onChange={e => setQuickIncome(e.target.value)} placeholder="如 8000" />
             </div>
             <div className="settings-row">
-              <div><div className="settings-label">固定支出（元/月）</div></div>
-              <input className="form-input" style={{ width: '220px' }} type="number" min={0} value={quickFixed} onChange={e => setQuickFixed(e.target.value)} placeholder="如 8000" />
-            </div>
-            <div className="settings-row">
-              <div><div className="settings-label">变动支出（元/月）</div></div>
-              <input className="form-input" style={{ width: '220px' }} type="number" min={0} value={quickVariable} onChange={e => setQuickVariable(e.target.value)} placeholder="如 2000" />
+              <div><div className="settings-label">税后月收入（元）</div></div>
+              <input className="form-input" style={{ width: '220px' }} type="number" min={0} value={quickNetIncome} onChange={e => setQuickNetIncome(e.target.value)} placeholder="如 7100（扣除社保公积金个税后）" />
             </div>
             <div className="settings-row">
               <div><div className="settings-label">风险偏好</div></div>
@@ -150,6 +148,9 @@ export function PlanPage() {
                 <option value="aggressive">积极型</option>
               </select>
             </div>
+            <p style={{ fontSize: '11.5px', color: 'var(--color-text-muted)', margin: '6px 0 0' }}>
+              💡 税后月收入 = 月收入 − 社保 − 公积金 − 个税。所有法则分桶将基于税后金额计算。
+            </p>
           </div>
         </div>
 
@@ -159,8 +160,7 @@ export function PlanPage() {
           onClick={() => {
             updateProfile({
               monthlyIncome: Number(quickIncome) || 0,
-              fixedExpenses: Number(quickFixed) || 0,
-              variableExpenses: Number(quickVariable) || 0,
+              netMonthlyIncome: quickNetIncome ? Number(quickNetIncome) : undefined,
               riskProfile: quickRisk as RiskProfile,
             });
           }}
@@ -190,9 +190,8 @@ export function PlanPage() {
             style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
           >
             <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-              📊 ¥{profile.monthlyIncome?.toLocaleString() ?? 0}/月 收入
-              {' · '}固定 ¥{profile.fixedExpenses?.toLocaleString() ?? 0}
-              {' · '}弹性 ¥{profile.variableExpenses?.toLocaleString() ?? 0}
+              📊 税前 ¥{profile.monthlyIncome?.toLocaleString() ?? 0}/月
+              {' → '}税后 ¥{(profile.netMonthlyIncome ?? profile.monthlyIncome ?? 0).toLocaleString()}/月
               {' · '}{profile.riskProfile === 'conservative' ? '保守型' : profile.riskProfile === 'aggressive' ? '积极型' : '稳健型'}
             </span>
             <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{financeOpen ? '收起 ▲' : '调整资料 ▼'}</span>
@@ -200,7 +199,7 @@ export function PlanPage() {
           {financeOpen && (
             <div className="settings-group-body" style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
               <div className="settings-row">
-                <div><div className="settings-label">月收入（元）</div></div>
+                <div><div className="settings-label">月收入（元）<span style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>（税前）</span></div></div>
                 <input
                   className="form-input" style={{ width: '200px' }} type="number" min={0}
                   value={editIncome} onChange={e => setEditIncome(e.target.value)}
@@ -208,19 +207,15 @@ export function PlanPage() {
                 />
               </div>
               <div className="settings-row">
-                <div><div className="settings-label">固定支出（元/月）</div></div>
+                <div><div className="settings-label">税后月收入（元）</div></div>
                 <input
                   className="form-input" style={{ width: '200px' }} type="number" min={0}
-                  value={editFixed} onChange={e => setEditFixed(e.target.value)}
-                  onBlur={() => updateProfile({ fixedExpenses: Number(editFixed) || 0 })}
-                />
-              </div>
-              <div className="settings-row">
-                <div><div className="settings-label">变动支出（元/月）</div></div>
-                <input
-                  className="form-input" style={{ width: '200px' }} type="number" min={0}
-                  value={editVariable} onChange={e => setEditVariable(e.target.value)}
-                  onBlur={() => updateProfile({ variableExpenses: Number(editVariable) || 0 })}
+                  value={editNetIncome} onChange={e => setEditNetIncome(e.target.value)}
+                  onBlur={() => {
+                    const v = Number(editNetIncome);
+                    updateProfile({ netMonthlyIncome: v > 0 ? v : undefined });
+                  }}
+                  placeholder={`默认 = 月收入 ¥${editIncome}`}
                 />
               </div>
               <div className="settings-row">
@@ -244,7 +239,7 @@ export function PlanPage() {
                 </select>
               </div>
               <p style={{ fontSize: '11.5px', color: 'var(--color-text-muted)', margin: '8px 0 0' }}>
-                离开输入框后自动保存，方案会即时重新计算
+                💡 法则分桶基数 = 税后月收入。各桶「实际金额」在下方方案卡片中按法则逐项填写。
               </p>
             </div>
           )}
@@ -386,6 +381,8 @@ function SchemeTab(props: SchemeTabProps) {
         </div>
       )}
 
+      <RateSelector />
+
       {/* R5：图旁说明行（投资桶月额 + 年化） */}
       <div className="chart-caption">
         基于「{rule?.name}」法则的投资桶月额 ¥{Math.round(investMonthly).toLocaleString()}，按 {(annualRate * 100).toFixed(0)}% 年化复利计算。每一点代表当年年末资产总额。切换法则时数据自动重算。
@@ -409,6 +406,12 @@ function SchemeTab(props: SchemeTabProps) {
         </div>
       </div>
 
+      {/* D6：复利末值 & 年化率 通俗解释（v1.7） */}
+      <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginBottom: 14, padding: '10px 12px', background: 'var(--color-bg-page)', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--color-border)', lineHeight: 1.8 }}>
+        <div><b style={{ color: 'var(--color-text-secondary)' }}>📈 复利末值（{effective?.investHorizonMonths ?? 120} 月）</b> = 按当前方案每月定额投入投资/储蓄桶，以 {(annualRate * 100).toFixed(0)}% 年化复利滚存，{Math.round((effective?.investHorizonMonths ?? 120) / 12)} 年后账户本利总和。</div>
+        <div><b style={{ color: 'var(--color-text-secondary)' }}>💰 年化率</b> = 期望的年均投资回报（保守3%≈理财 / 稳健5%≈指数基金长期均值 / 进取8%≈偏股型基金历史参考）。<b>仅作推演，非承诺收益。</b>可在上方切换档位或自定义。</div>
+      </div>
+
       {/* Compliance tip */}
       {needsTip && (
         <div className="card" style={{ marginBottom: '16px', borderColor: 'var(--color-primary-border)', borderLeft: '3px solid var(--color-primary)' }}>
@@ -418,42 +421,23 @@ function SchemeTab(props: SchemeTabProps) {
         </div>
       )}
 
-      {/* Bucket cards */}
-      <div className="metric-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', marginBottom: '20px' }}>
-        {generated.map((b) => {
-          const alloc = mode === 'single' && rule ? rule.allocations.find((a) => a.label === b.name) : undefined;
-          const flagged = alloc ? flaggedKeys.has(alloc.bucketKey) : false;
-          return (
-            <div className="card" key={b.id}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <strong style={{ fontSize: '14.5px', color: 'var(--color-text)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  {flagged && <span title="该桶占比偏高" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-danger)', display: 'inline-block' }} />}
-                  {b.name}
-                </strong>
-                <span style={{
-                  fontFamily: 'var(--font-mono)', fontSize: '15px', fontWeight: 700,
-                  color: b.color || 'var(--color-primary)',
-                }}>
-                  ¥{b.monthlyAmount.toLocaleString()}<span style={{ fontSize: '12', fontWeight: 400, color: 'var(--color-text-muted)' }}>/月</span>
-                </span>
-              </div>
-              <div style={{
-                height: '6px', background: 'var(--color-bg-page)', borderRadius: '3px',
-                overflow: 'hidden', marginBottom: '10px',
-              }}>
-                <span style={{
-                  display: 'block', height: '100%',
-                  width: `${(b.monthlyAmount / max) * 100}%`,
-                  background: flagged ? 'var(--color-danger)' : b.color || 'var(--color-primary)',
-                  borderRadius: '3px',
-                  transition: 'width 0.4s ease',
-                }} />
-              </div>
-              <span style={{ fontSize: '12.5px', color: 'var(--color-text-muted)' }}>{b.note}</span>
-            </div>
-          );
-        })}
+      {/* 真实数据摘要条（v1.7：基于税后收入） */}
+      <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: 14, padding: '8px 12px', background: 'var(--color-bg-page)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+        分桶基数（税后）：<b style={{ color: 'var(--color-text)' }}>¥{Math.round(effectiveIncome(effective!)).toLocaleString()}</b>
+        {' · '}当前储蓄 <b style={{ color: 'var(--color-text)' }}>¥{(effective?.currentSavings || 0).toLocaleString()}</b>
+        {' · '}在下方各卡片中填写每项的实际支出/投入
       </div>
+
+      {/* Bucket cards（v1.7：每张卡片可编辑「你的实际」金额） */}
+      <BucketCards
+        mode={mode}
+        rule={rule}
+        effective={effective}
+        generated={generated}
+        max={max}
+        flaggedKeys={flaggedKeys}
+        annualRate={annualRate}
+      />
 
       {/* R6：本月执行清单（路线B 现金流瀑布 + 组合模式接入） */}
       <ExecutionList
@@ -513,5 +497,159 @@ function ModeToggle({ mode, setMode }: { mode: 'single' | 'combo'; setMode: (m: 
         组合方案
       </button>
     </div>
+  );
+}
+
+// ──────────────────────────────────────────────
+// BucketCards：v1.7 每张卡片可编辑「你的实际」金额
+// ──────────────────────────────────────────────
+
+interface BucketCardsProps {
+  mode: 'single' | 'combo';
+  rule: ReturnType<typeof getRule>;
+  effective: UserProfile | null;
+  generated: ReturnType<typeof buildPlanView>['buckets'];
+  max: number;
+  flaggedKeys: Set<string>;
+  annualRate: number;
+}
+
+function BucketCards({ mode, rule, effective, generated, max, flaggedKeys }: BucketCardsProps) {
+  // 从 localStorage 加载当前法则的实际值（切换法则时自动更新）
+  const [actuals, setActuals] = useState<Record<string, number>>({});
+
+  const ruleId = rule?.id ?? '';
+  useEffect(() => {
+    if (!ruleId) return;
+    setActuals(getRuleActuals(ruleId));
+  }, [ruleId]);
+
+  if (!effective || !rule) return null;
+
+  const handleBlur = (bucketKey: string, val: string) => {
+    const n = Number(val);
+    if (n >= 0) {
+      setRuleActual(ruleId, bucketKey, n);
+      setActuals((prev) => ({ ...prev, [bucketKey]: n }));
+    }
+  };
+
+  // 计算已填写实际金额的总额（用于显示剩余可支配）
+  // v1.7.3: 所有法则只统计「纯消费桶」（CONSUMPTION_KEYS）；储蓄/投资/保险等分配桶不再计入消费，
+  //          避免与下方「已规划分配」重复计算。
+  const totalConsumptionActual = generated.reduce((sum, b) => {
+    const key = b.bucketKey ?? '';
+    const val = actuals[key];
+    if (CONSUMPTION_KEYS.has(key)) return sum + (val || 0);
+    return sum;
+  }, 0);
+  const netIncome = effectiveIncome(effective);
+  const remaining = netIncome - totalConsumptionActual;
+
+  return (
+    <>
+      {/* 消费桶填写后的剩余可支配提示 */}
+      {mode === 'single' && (
+        <div style={{ fontSize: '12.5px', color: 'var(--color-text-secondary)', marginBottom: 12, padding: '8px 12px', background: 'linear-gradient(135deg, rgba(59,130,246,0.05), rgba(147,51,234,0.05))', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+          税后 ¥{Math.round(netIncome).toLocaleString()} − 消费支出实际合计 ¥{totalConsumptionActual.toLocaleString()}
+          = <b style={{ color: remaining >= 0 ? 'var(--accent-green)' : 'var(--color-danger)' }}>¥{Math.round(remaining).toLocaleString()}</b> 可投入储蓄/投资
+          {remaining < 0 && <span style={{ color: 'var(--color-danger)', marginLeft: 6 }}>⚠️ 实际支出已超过税后收入</span>}
+        </div>
+      )}
+
+      <div className="metric-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', marginBottom: '20px' }}>
+        {generated.map((b) => {
+          const key = b.bucketKey ?? '';
+          const alloc = mode === 'single' ? rule.allocations.find((a) => a.label === b.name) : undefined;
+          const flagged = alloc ? flaggedKeys.has(alloc.bucketKey) : false;
+          const kind = bucketKind(key);
+          // v1.7.2: income 级法则所有桶都可编辑（用户自主决定每桶实际金额）；
+          //         invest 级法则只有消费类桶可编辑，投资/保本类由引擎按可支配自动分配
+          const allEditable = rule.scope === 'income';
+          const isInvestOrProtect = !allEditable && (kind === 'invest' || kind === 'protect');
+          const rawVal = actuals[key];
+          const actualVal = rawVal ?? 0;
+          const filled = rawVal !== undefined && rawVal !== null;
+          const diff = isInvestOrProtect ? null : actualVal - b.monthlyAmount;
+          // 分配桶（储蓄/投资/保险等，非消费类且非投资保本类）：多存是正向反馈，翻转语义
+          const isSavingBucket = !isInvestOrProtect && !CONSUMPTION_KEYS.has(key);
+
+          return (
+            <div className="card" key={b.id}>
+              {/* 卡片标题行 */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <strong style={{ fontSize: '14.5px', color: 'var(--color-text)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {flagged && <span title="该桶占比偏高" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-danger)', display: 'inline-block' }} />}
+                  {b.name}
+                </strong>
+                <span style={{
+                  fontFamily: 'var(--font-mono)', fontSize: '15px', fontWeight: 700,
+                  color: b.color || 'var(--color-primary)',
+                }}>
+                  ¥{b.monthlyAmount.toLocaleString()}<span style={{ fontSize: '12', fontWeight: 400, color: 'var(--color-text-muted)' }}>/月</span>
+                </span>
+              </div>
+
+              {/* 法则建议 */}
+              <div style={{ fontSize: '12.5px', color: 'var(--color-text-secondary)', lineHeight: 1.75 }}>
+                <div>法则建议 <b style={{ color: 'var(--color-text)' }}>¥{b.monthlyAmount.toLocaleString()}</b></div>
+
+                {isInvestOrProtect ? (
+                  /* 投资保本类：不可编辑，显示说明 */
+                  <div style={{ color: 'var(--color-text-muted)', marginTop: 4 }}>{configNote(kind, Math.max(0, remaining))}</div>
+                ) : (
+                  /* 消费类：可编辑实际金额 */
+                  <>
+                    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <label style={{ fontSize: '11.5px', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>你的实际</label>
+                      <input
+                        className="form-input"
+                        type="number"
+                        min={0}
+                        step={50}
+                        style={{ width: '120px', fontSize: '13px' }}
+                        value={filled ? (rawVal === 0 ? '0' : rawVal) : ''}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setActuals((prev) => ({ ...prev, [key]: v === '' ? 0 : Number(v) }));
+                        }}
+                        onBlur={(e) => handleBlur(key, e.target.value)}
+                        placeholder="填写实际金额"
+                      />
+                      <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>元/月</span>
+                    </div>
+                    {/* 差额（实际 − 建议）：
+                        消费桶：实际更少 = 省（绿），实际更多 = 超（红）；
+                        分配桶（储蓄/投资/保险）：实际更多 = 多存（绿，正向），实际更少 = 还差（琥珀）；允许填 0 */}
+                    {filled && diff !== null && (
+                      isSavingBucket ? (
+                        <div style={{ fontWeight: 700, color: diff >= 0 ? 'var(--accent-green)' : 'var(--color-warning)', marginTop: 4 }}>
+                          {diff >= 0 ? '💪 多存' : '📌 还差'} ¥{Math.abs(Math.round(diff)).toLocaleString()}/月
+                        </div>
+                      ) : (
+                        <div style={{ fontWeight: 700, color: diff <= 0 ? 'var(--accent-green)' : 'var(--color-danger)', marginTop: 4 }}>
+                          {diff <= 0 ? '✅ 省' : '⚠️ 超'} ¥{Math.abs(Math.round(diff)).toLocaleString()}/月
+                        </div>
+                      )
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* 进度条 */}
+              <div style={{ height: '6px', background: 'var(--color-bg-page)', borderRadius: '3px', overflow: 'hidden', margin: '10px 0 2px' }}>
+                <span style={{
+                  display: 'block', height: '100%',
+                  width: `${(b.monthlyAmount / max) * 100}%`,
+                  background: flagged ? 'var(--color-danger)' : b.color || 'var(--color-primary)',
+                  borderRadius: '3px',
+                  transition: 'width 0.4s ease',
+                }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }

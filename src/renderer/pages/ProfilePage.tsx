@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '../stores/useAppStore';
 import { EChart } from '../components/EChart';
 import { computeHealthScore, computeBadges } from '../features/profile/health';
-import { monthlyDisposable, totalMonthlyDebt, totalMonthlyIncome } from '../@core/domain/user';
+import { totalMonthlyDebt, totalMonthlyIncome } from '../@core/domain/user';
 import { colors } from '../@design/tokens';
 import { WarningBar } from '../features/warn/WarningBar';
-import { ExpenseWizard } from '../features/estimator/ExpenseWizard';
 import { TermPopover } from '../features/education/TermPopover';
 import { ReportButton } from '../features/report/ReportButton';
-import { allocateThreeBuckets } from '../features/budget/threeBuckets';
+import { allocateThreeBuckets, getThreeBucketRatios } from '../features/budget/threeBuckets';
+import { getRule } from '../@core/domain/rule';
+import { buildWaterfall } from '../features/budget/waterfall';
+import { consumptionActualOf } from '../features/plan/consumption';
 
 /* ── Trend arrow icons ── */
 const ArrowUp = () => (
@@ -42,18 +44,31 @@ const HealthRing = ({ score }: { score: number }) => {
 export function ProfilePage() {
   const profile = useAppStore((s) => s.profile);
   const buckets = useAppStore((s) => s.buckets);
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const selectedRuleId = useAppStore((s) => s.selectedRuleId);
 
-  const hasData = !!profile && (profile.monthlyIncome > 0 || profile.currentSavings > 0 || profile.fixedExpenses > 0);
+  const hasData = !!profile && (profile.monthlyIncome > 0 || profile.currentSavings > 0);
   const score = profile ? computeHealthScore(profile) : 0;
   const badges = profile ? computeBadges(profile, { hasPlan: buckets.length > 0 }) : [];
   const earned = badges.filter((b) => b.earned);
   const remainingTo80 = Math.max(0, Math.ceil(((80 - score) / 100) * 8));
 
   const income = profile ? Math.round(totalMonthlyIncome(profile)) : 0;
-  const expense = profile ? Math.round(profile.fixedExpenses + profile.variableExpenses + totalMonthlyDebt(profile)) : 0;
-  const disp = profile ? monthlyDisposable(profile) : 0;
-  const three = profile ? allocateThreeBuckets(profile) : null;
+  // v1.7.3: 可支配收入 + 三桶均基于「选中法则的实际消费」计算，不再跟随旧 fixed/variable
+  const selectedRule = selectedRuleId ? getRule(selectedRuleId) : undefined;
+  const [dashConsumption] = profile ? consumptionActualOf(profile, selectedRule) : [0];
+  const dashWf = profile ? buildWaterfall(profile, selectedRule, dashConsumption) : null;
+  // v1.7.4: Dashboard「本月收支」支出 = 方案页填写的消费类实际合计（未填则 0，触发填写引导）
+  const expense = dashConsumption;
+  const disp = dashWf ? dashWf.disposable : 0;
+  const dashRatios = getThreeBucketRatios();
+  const three = profile ? allocateThreeBuckets(
+    profile,
+    dashWf && dashWf.disposable > 0 ? dashWf.disposable : undefined,
+    selectedRule?.reserveTargetMonths ?? 3,
+    dashConsumption,
+    dashRatios.reserve,
+    dashRatios.flexible,
+  ) : null;
 
   const metrics = [
     { label: '月收入', termId: 'monthlyIncome', value: `¥${income.toLocaleString()}`, accent: 'accent-blue' as const },
@@ -77,8 +92,6 @@ export function ProfilePage() {
           <p>以下是你的财务概览</p>
         </div>
         <div className="welcome-actions">
-          <button className="btn btn-ghost btn-sm" onClick={() => setWizardOpen(true)}>🧮 估算支出</button>
-          <Link to="/settings" className="btn btn-secondary btn-sm">✏️ 填写资料</Link>
           <Link to="/plan" className="btn btn-primary btn-sm">⚡ 生成方案</Link>
         </div>
       </div>
@@ -92,7 +105,7 @@ export function ProfilePage() {
             <div className="health-sub">
               {score >= 80 ? '资料已较完整，继续保持 🎉' : `再完善 ${remainingTo80} 项即可达到 80 分`}
             </div>
-            <Link to="/settings" className="metric-link">去补全资料 →</Link>
+            <Link to="/plan" className="metric-link">去补全资料 →</Link>
           </div>
         </div>
 
@@ -151,6 +164,11 @@ export function ProfilePage() {
               <span className="three-bucket-sub">储蓄 / 投资 / 消费自由</span>
             </div>
           </div>
+          {!selectedRule && (
+            <p className="muted-hint" style={{ marginTop: 10 }}>
+              未选择理财法则，此处按全部可支配收入估算；在「方案页」选择法则并填写各桶实际支出后，将显示精确的保命钱三桶分配。
+            </p>
+          )}
         </div>
       )}
 
@@ -158,18 +176,25 @@ export function ProfilePage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px' }}>
         <div className="chart-card">
           <div className="chart-card-header"><span className="chart-card-title">本月收支</span></div>
-          {hasData ? (
-            <EChart option={{
-              backgroundColor: 'transparent',
-              grid: { left: 50, right: 20, top: 24, bottom: 30 },
-              tooltip: { trigger: 'axis' },
-              xAxis: { type: 'category', data: ['本月'], axisLine: { lineStyle: { color: 'var(--color-border)' } }, axisLabel: { color: 'var(--color-text-muted)', fontSize: 11 } },
-              yAxis: { type: 'value', axisLabel: { color: 'var(--color-text-muted)', fontSize: 11, formatter: (v: number) => `¥${(v / 1000).toFixed(0)}k` }, splitLine: { lineStyle: { color: 'var(--color-border)', type: 'dashed' } } },
-              series: [
-                { name: '收入', type: 'bar', data: [income], itemStyle: { color: colors.primary, borderRadius: [4, 4, 0, 0] }, barWidth: '28%' },
-                { name: '支出', type: 'bar', data: [expense], itemStyle: { color: '#E8EDF4', borderRadius: [4, 4, 0, 0] }, barWidth: '28%' },
-              ],
-            }} style={{ height: '240px' }} />
+          {hasData && income > 0 ? (
+            expense > 0 ? (
+              <EChart option={{
+                backgroundColor: 'transparent',
+                grid: { left: 50, right: 20, top: 24, bottom: 30 },
+                tooltip: { trigger: 'axis' },
+                xAxis: { type: 'category', data: ['本月'], axisLine: { lineStyle: { color: 'var(--color-border)' } }, axisLabel: { color: 'var(--color-text-muted)', fontSize: 11 } },
+                yAxis: { type: 'value', axisLabel: { color: 'var(--color-text-muted)', fontSize: 11, formatter: (v: number) => `¥${(v / 1000).toFixed(0)}k` }, splitLine: { lineStyle: { color: 'var(--color-border)', type: 'dashed' } } },
+                series: [
+                  { name: '收入', type: 'bar', data: [income], itemStyle: { color: colors.primary, borderRadius: [4, 4, 0, 0] }, barWidth: '28%' },
+                  { name: '支出', type: 'bar', data: [expense], itemStyle: { color: '#E8EDF4', borderRadius: [4, 4, 0, 0] }, barWidth: '28%' },
+                ],
+              }} style={{ height: '240px' }} />
+            ) : (
+              <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>💡 请在 <Link to="/plan" style={{ color: 'var(--color-primary)' }}>方案页</Link> 为各法则桶填写实际支出金额</div>
+                <div style={{ fontSize: '11.5px', color: 'var(--color-text-muted)' }}>填写后，支出柱状图将自动显示你的真实消费数据</div>
+              </div>
+            )
           ) : (
             <div className="empty-state"><p>填写财务资料后，这里会显示你的收支对比</p></div>
           )}
@@ -204,15 +229,15 @@ export function ProfilePage() {
       <div className="card" style={{ marginTop: '18px' }}>
         <div className="card-header"><span className="card-title">快捷操作</span></div>
         <div className="quick-actions">
-          <Link to="/settings" className="quick-action"><span>✏️</span> 填写 / 修改资料</Link>
+          <Link to="/plan" className="quick-action"><span>✏️</span> 填写 / 修改资料</Link>
           <Link to="/plan" className="quick-action"><span>⚡</span> 生成理财方案</Link>
           <Link to="/rules" className="quick-action"><span>📚</span> 浏览理财法则</Link>
           <Link to="/visualizer" className="quick-action"><span>📈</span> 复利可视化</Link>
+          <a className="quick-action" href="https://github.com/YuyuetMo/FirstBucket/releases" target="_blank" rel="noopener noreferrer"><span>🔄</span> 检查更新</a>
           <span className="quick-action" style={{ cursor: 'pointer' }}><ReportButton /></span>
         </div>
       </div>
 
-      <ExpenseWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
     </div>
   );
 }

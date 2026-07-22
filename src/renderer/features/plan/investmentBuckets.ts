@@ -17,6 +17,7 @@ export const INVESTMENT_BUCKET_KEYS: ReadonlySet<string> = new Set([
   'ltbond',
   'mtbond',
   'commodity',
+  'gold',     // 永久组合（Permanent Portfolio）黄金
   'tbill',
   'principal',
   'sprint',

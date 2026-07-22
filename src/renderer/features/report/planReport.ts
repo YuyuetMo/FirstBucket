@@ -42,9 +42,10 @@ function escapeHtml(s: string | number): string {
     .replace(/"/g, '&quot;');
 }
 
-function rateForRisk(risk: UserProfile['riskProfile']): number {
-  if (risk === 'aggressive') return 0.07;
-  if (risk === 'conservative') return 0.03;
+function rateForRisk(profile: UserProfile): number {
+  if (typeof profile.compoundAnnualRate === 'number') return profile.compoundAnnualRate;
+  if (profile.riskProfile === 'aggressive') return 0.07;
+  if (profile.riskProfile === 'conservative') return 0.03;
   return 0.05;
 }
 
@@ -81,7 +82,7 @@ export function buildReportHtml(ctx: ReportContext, toImage: (option: EChartsOpt
   // —— 图表：复利推演折线 ——
   const monthlySave = Math.max(0, monthlyDisposable(profile));
   const months = Math.max(1, profile.investHorizonMonths || 120);
-  const series = compoundSeries(monthlySave, rateForRisk(profile.riskProfile), months);
+  const series = compoundSeries(monthlySave, rateForRisk(profile), months);
   const lineOption: EChartsOption = {
     backgroundColor: '#ffffff',
     grid: { left: 60, right: 20, top: 30, bottom: 40 },
@@ -169,7 +170,7 @@ export function buildReportHtml(ctx: ReportContext, toImage: (option: EChartsOpt
     <table><thead><tr><th>分桶</th><th>月金额</th><th>说明</th></tr></thead><tbody>${bucketRows}</tbody></table>
 
     <h2>四、复利推演</h2>
-    <p class="muted">以每月可投 ${fmtMoney(monthlySave)}、假设年化 ${Math.round(rateForRisk(profile.riskProfile) * 100)}%、期限 ${months} 个月测算</p>
+    <p class="muted">以每月可投 ${fmtMoney(monthlySave)}、假设年化 ${Math.round(rateForRisk(profile) * 100)}%、期限 ${months} 个月测算</p>
     <img src="${lineImg}" alt="复利推演" />
     <table>
       <tr><th>复利末值</th><td>${fmtMoney(plan.futureValue)}</td></tr>

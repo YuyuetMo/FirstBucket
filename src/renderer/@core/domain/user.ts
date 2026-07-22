@@ -68,6 +68,10 @@ export interface UserProfile {
   preset?: PresetId | null;
   /** 已忽略的预警 id 列表（会话态；建议仅内存/localStorage，不强制写入 SQLite） */
   dismissedWarnings?: string[];
+  /** v1.6：复利推演年化利率（小数，如 0.05）；用户在复利页/方案页切换档位或自定义输入。未设则各引擎回退 riskProfile 映射。 */
+  compoundAnnualRate?: number;
+  /** v1.7：税后月收入（用户手动填写，默认 = monthlyIncome）。所有法则分桶的基数从此值计算。 */
+  netMonthlyIncome?: number;
 
   // —— v1.2 五步画像增量（可选，JSON 向后兼容）——
   /** 税前月薪（Step1 录入） */
@@ -92,6 +96,11 @@ export function totalMonthlyIncome(
   p: Pick<UserProfile, 'monthlyIncome' | 'incomeAnnualBonus' | 'incomeOther'>,
 ): number {
   return p.monthlyIncome + p.incomeAnnualBonus / 12 + p.incomeOther;
+}
+
+/** v1.7: 法则分桶的有效基数（优先税后，回退税前） */
+export function effectiveIncome(p: Pick<UserProfile, 'netMonthlyIncome' | 'monthlyIncome'>): number {
+  return (p as UserProfile).netMonthlyIncome ?? p.monthlyIncome;
 }
 
 export function monthlyDisposable(p: UserProfile): number {
@@ -127,5 +136,7 @@ export function createEmptyProfile(id: string): UserProfile {
     updatedAt: now,
     fixedExpenseItems: [],
     variableExpenseItems: [],
+    compoundAnnualRate: 0.05,
+    // v1.7: 不设默认值（undefined）；读取处用 profile.netMonthlyIncome ?? profile.monthlyIncome 回退
   };
 }

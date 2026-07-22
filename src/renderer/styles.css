@@ -1357,12 +1357,24 @@ select.form-select { appearance: none; cursor: pointer; background-image: url("d
 
 /* ══════════════════════════════════════════════════
    TERM POPOVER — hover 小 tooltip / 右键菜单 / 起源故事（R3 / T03）
+   v1.7.2 修复：桥接区消除死区 + 居中定位防溢出 + pointer-events:auto
    ══════════════════════════════════════════════════ */
-.rule-info-tip {
+
+/* 桥接包裹层：连接按钮与弹层，接收鼠标事件以维持 hover 状态 */
+.rule-info-tip-bridge {
   position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  /* 向上延伸覆盖按钮底部间隙，向下覆盖弹层全部区域 */
+  margin-top: -4px;
+  pointer-events: auto;
   z-index: 420;
+}
+
+.rule-info-tip {
+  position: relative;           /* 改为相对 bridge 定位，不再 absolute 到 button */
+  display: block;
   width: 260px;
   max-width: 80vw;
   background: #2A3340;
@@ -1372,7 +1384,8 @@ select.form-select { appearance: none; cursor: pointer; background-image: url("d
   padding: 12px 14px;
   text-align: left;
   animation: fadeSlideDown 0.15s ease;
-  pointer-events: none;
+  pointer-events: auto;        /* 允许鼠标进入弹层 */
+  margin-top: 4px;             /* 与按钮的间距由 bridge 的 margin-top:-4px 抵消 */
 }
 .rule-info-tip-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
 .rule-info-tip-text {

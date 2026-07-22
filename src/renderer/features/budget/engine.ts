@@ -1,5 +1,5 @@
 import type { UserProfile } from '../../@core/domain/user';
-import { totalMonthlyIncome, investmentPool } from '../../@core/domain/user';
+import { totalMonthlyIncome, investmentPool, effectiveIncome } from '../../@core/domain/user';
 import type { Rule } from '../../@core/domain/rule';
 import type { Bucket } from '../../@core/domain/bucket';
 
@@ -10,7 +10,7 @@ import type { Bucket } from '../../@core/domain/bucket';
 export function applyRule(profile: UserProfile, rule: Rule, baseOverride?: number): Bucket[] {
   const base =
     baseOverride ??
-    (rule.scope === 'invest' ? investmentPool(profile) : totalMonthlyIncome(profile));
+    (rule.scope === 'invest' ? investmentPool(profile) : effectiveIncome(profile));
   return rule.allocations.map((a) => ({
     id: `${rule.id}-${a.bucketKey}`,
     ruleId: rule.id,

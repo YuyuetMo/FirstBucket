@@ -66,9 +66,10 @@ const ASSET_META: Record<Asset, { name: string; color: string }> = {
 };
 const ASSET_ORDER: Asset[] = ['equity', 'bond', 'commodity', 'cash'];
 
-function annualRateFor(risk: UserProfile['riskProfile']): number {
-  if (risk === 'aggressive') return 0.07;
-  if (risk === 'conservative') return 0.03;
+function annualRateFor(profile: UserProfile): number {
+  if (typeof profile.compoundAnnualRate === 'number') return profile.compoundAnnualRate;
+  if (profile.riskProfile === 'aggressive') return 0.07;
+  if (profile.riskProfile === 'conservative') return 0.03;
   return 0.05;
 }
 
@@ -149,11 +150,11 @@ export function applyRules(
   const equityRatio = investMonthly > 0 ? Math.round((assetSums.equity / investMonthly) * 100) / 100 : 0;
 
   // F2 修复：组合复利利率关联到所选投资级法则的加权 equityRatio；
-  // 无投资级法则（回退默认桶）时沿用 riskProfile 口径，保证与单法则视图连续。
+  // 用户手动设了年化（profile.compoundAnnualRate）则优先用之；无投资级法则（回退默认桶）时沿用 riskProfile 口径。
   const rate =
     investRules.length > 0
-      ? 0.03 + equityRatio * 0.07
-      : annualRateFor(profile.riskProfile);
+      ? (typeof profile.compoundAnnualRate === 'number' ? profile.compoundAnnualRate : 0.03 + equityRatio * 0.07)
+      : annualRateFor(profile);
 
   const series = compoundSeries(investMonthly, rate, months);
   const futureValue = series.length ? series[series.length - 1].value : 0;

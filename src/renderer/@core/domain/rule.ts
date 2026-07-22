@@ -9,9 +9,8 @@ export type RuleId =
   | 'core-satellite'
   | 'all-weather'
   | 'six-jars'
-  | 'kakeibo'
+  | 'permanent-portfolio'
   | 'four-percent'
-  | 'coast-fire'
   | 'buffett-90-10'
   | '60-40';
 
@@ -163,22 +162,19 @@ export const RULES: Rule[] = [
     applicability: () => 72,
   },
   {
-    id: 'kakeibo',
-    name: 'Kakeibo 记账法',
-    description: '日式记账四问：想要/需要/突发/文化',
-    tags: ['记账', '习惯'],
-    scope: 'income',
-    // O2: 待设计师终审
-    lifeStages: ['single', 'newgrad', 'family'],
-    reserveTargetMonths: 3,
-    reserveRationale: '「突发」账户对应 3 个月缓冲，覆盖未列入常规预算的意外支出。',
+    id: 'permanent-portfolio',
+    name: '永久组合（Permanent Portfolio）',
+    description: '股票 / 长期国债 / 黄金 / 短期国债 各 25%',
+    tags: ['配置', '防御', '经典'],
+    scope: 'invest',
+    lifeStages: ['single', 'dualincome', 'family', 'preretire'],
     allocations: [
-      { label: '需要', pct: 50, bucketKey: 'need', color: '#D4A857' },
-      { label: '想要', pct: 30, bucketKey: 'want', color: '#C97B63' },
-      { label: '突发', pct: 15, bucketKey: 'surprise', color: '#8E7CC3' },
-      { label: '文化', pct: 5, bucketKey: 'culture', color: '#5BA3A8' },
+      { label: '股票', pct: 25, bucketKey: 'equity', color: '#C97B63' },
+      { label: '长期国债', pct: 25, bucketKey: 'ltbond', color: '#5BA3A8' },
+      { label: '黄金', pct: 25, bucketKey: 'gold', color: '#D4A857' },
+      { label: '短期国债', pct: 25, bucketKey: 'tbill', color: '#8E7CC3' },
     ],
-    applicability: () => 70,
+    applicability: (p) => (p.riskProfile === 'conservative' ? 88 : 68),
   },
   {
     id: 'four-percent',
@@ -193,22 +189,6 @@ export const RULES: Rule[] = [
       { label: '本金留存', pct: 96, bucketKey: 'principal', color: '#5BA3A8' },
     ],
     applicability: (p) => (p.investHorizonMonths > 240 ? 84 : 50),
-  },
-  {
-    id: 'coast-fire',
-    name: 'Coast FIRE',
-    description: '前期冲刺储蓄，后期躺平',
-    tags: ['FIRE', '自由'],
-    scope: 'income',
-    // O2: 待设计师终审
-    lifeStages: ['newgrad', 'single', 'dualincome'],
-    reserveTargetMonths: 6,
-    reserveRationale: '冲刺期更激进，应急垫要更厚——6 个月缓冲，避免中途被迫退出储蓄计划。',
-    allocations: [
-      { label: '冲刺储蓄', pct: 50, bucketKey: 'sprint', color: '#5BA3A8' },
-      { label: '日常', pct: 50, bucketKey: 'living', color: '#D4A857' },
-    ],
-    applicability: (p) => (p.currentSavings < 100000 ? 83 : 60),
   },
   {
     id: 'buffett-90-10',

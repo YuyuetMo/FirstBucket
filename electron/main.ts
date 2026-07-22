@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { join } from 'path';
 import Database from 'better-sqlite3';
 
@@ -84,6 +84,15 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../dist/index.html'));
   }
+
+  // 外部 http(s) 链接用系统默认浏览器打开，避免 GitHub 等页面在应用内新窗加载
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) {
+      shell.openExternal(url);
+      return { action: 'deny' };
+    }
+    return { action: 'allow' };
+  });
 }
 
 app.whenReady().then(() => {

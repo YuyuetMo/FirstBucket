@@ -17,10 +17,11 @@ export interface PlanView {
   equityRatio: number;
 }
 
-/** 风险偏好 → 复利推演假设年化 */
-function annualRateFor(risk: UserProfile['riskProfile']): number {
-  if (risk === 'aggressive') return 0.07;
-  if (risk === 'conservative') return 0.03;
+/** 风险偏好 / 手动利率 → 复利推演假设年化（v1.6：优先用用户手动设的 compoundAnnualRate） */
+function annualRateFor(profile: UserProfile): number {
+  if (typeof profile.compoundAnnualRate === 'number') return profile.compoundAnnualRate;
+  if (profile.riskProfile === 'aggressive') return 0.07;
+  if (profile.riskProfile === 'conservative') return 0.03;
   return 0.05;
 }
 
@@ -43,7 +44,7 @@ export function buildPlanView(profile: UserProfile, rule: Rule): PlanView {
   const totalMonthly = buckets.reduce((s, b) => s + b.monthlyAmount, 0);
   const months = Math.max(1, profile.investHorizonMonths || 120);
   const investMonthly = Math.max(0, investmentMonthlyOf(rule, profile));
-  const series = compoundSeries(investMonthly, annualRateFor(profile.riskProfile), months);
+  const series = compoundSeries(investMonthly, annualRateFor(profile), months);
   const futureValue = series.length ? series[series.length - 1].value : 0;
   const reachMonths = computeEmergencyFundReachMonths(profile, monthlyDisposable(profile));
   const equityRatio = getEquityRatio(profile, rule);

@@ -25,8 +25,8 @@ export const PRESETS: PresetDef[] = [
     label: '学生',
     desc: '收入有限、无负债压力，重在养成储蓄与记账习惯',
     icon: '🎓',
-    recommendRules: ['50-30-20', 'six-jars', 'kakeibo'],
-    weights: { '50-30-20': 16, 'six-jars': 12, kakeibo: 12 },
+    recommendRules: ['50-30-20', 'six-jars', 'permanent-portfolio'],
+    weights: { '50-30-20': 16, 'six-jars': 12, 'permanent-portfolio': 12 },
   },
   {
     id: 'newgrad',
@@ -65,8 +65,8 @@ export const PRESETS: PresetDef[] = [
     label: '临退休',
     desc: '临近退休，降低波动、保本金与现金流',
     icon: '🌅',
-    recommendRules: ['four-percent', 'coast-fire', '100-age'],
-    weights: { 'four-percent': 16, 'coast-fire': 14, '100-age': 12 },
+    recommendRules: ['four-percent', 'permanent-portfolio', '100-age'],
+    weights: { 'four-percent': 16, 'permanent-portfolio': 14, '100-age': 12 },
   },
 ];
 

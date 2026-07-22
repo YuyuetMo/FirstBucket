@@ -20,6 +20,8 @@ interface TermPopoverProps {
  * - 法则卡片（传 rule）：hover → 小 tooltip（short + 比例条）；右键 → 上下文菜单「了解更多」→ 起源故事 modal；键盘聚焦 Enter → 打开 modal（触屏/键盘兜底）。
  * - 财务字段（不传 rule）：hover → 小 tooltip（short）；点击 → 内联 popover（short + origin）。
  * 内容只从 education/terms.ts 取用（设计文档 §7.1），不硬编码。
+ *
+ * v1.7.2 修复：hover 绑定到包裹 span（非 button）+ 120ms 延迟隐藏 + 桥接区消除死区，解决鼠标下移时弹层闪烁/重叠 bug。
  */
 export function TermPopover({ termId, rule, size = 'sm', style }: TermPopoverProps) {
   const term = getTerm(termId);
@@ -29,6 +31,17 @@ export function TermPopover({ termId, rule, size = 'sm', style }: TermPopoverPro
   const [fieldOpen, setFieldOpen] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  // 清除隐藏定时器
+  const clearHideTimer = () => {
+    if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = undefined; }
+  };
+  // 延迟隐藏（给鼠标留出从按钮到弹层的桥接时间）
+  const scheduleHide = () => {
+    clearHideTimer();
+    hideTimer.current = setTimeout(() => setHover(false), 120);
+  };
 
   useEffect(() => {
     if (!menuOpen && !modalOpen) return;
@@ -65,13 +78,16 @@ export function TermPopover({ termId, rule, size = 'sm', style }: TermPopoverPro
   };
 
   return (
-    <span ref={wrapRef} style={{ position: 'relative', display: 'inline-flex', verticalAlign: 'middle', ...style }}>
+    <span
+      ref={wrapRef}
+      style={{ position: 'relative', display: 'inline-flex', verticalAlign: 'middle', ...style }}
+      onMouseEnter={() => { clearHideTimer(); setHover(true); }}
+      onMouseLeave={scheduleHide}
+    >
       <button
         type="button"
         aria-label={`查看「${term.label}」释义`}
         title={term.label}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
         onClick={openDetail}
         onContextMenu={(e) => {
           if (!rule) return;
@@ -104,8 +120,12 @@ export function TermPopover({ termId, rule, size = 'sm', style }: TermPopoverPro
         ?
       </button>
 
-      {/* hover 小 tooltip（深底白字 + 比例条），不遮挡其他卡片 */}
-      {hover && <RulesInfoTip term={term} rule={rule} />}
+      {/* hover 小 tooltip — 包裹桥接区，消除按钮与弹层间的死区，防止屏闪 */}
+      {hover && (
+        <span className="rule-info-tip-bridge" onMouseEnter={() => { clearHideTimer(); }} onMouseLeave={scheduleHide}>
+          <RulesInfoTip term={term} rule={rule} />
+        </span>
+      )}
 
       {/* 右键菜单：了解更多（仅法则卡片） */}
       {menuOpen && rule && (

@@ -5,6 +5,7 @@ import { getRule } from '../@core/domain/rule';
 import { investmentMonthlyOf } from '../features/plan/metrics';
 import { compoundSeries } from '../features/budget/engine';
 import { EChart } from '../components/EChart';
+import { RateSelector } from '../components/RateSelector';
 import type { EChartsOption } from 'echarts';
 
 // F3 修复：与方案页口径统一（metrics.ts / combine.ts）：平衡 0.05、稳健 0.03、进取 0.07。
@@ -22,7 +23,7 @@ export function VisualizerPage() {
     const rule = selectedRuleId ? getRule(selectedRuleId) : undefined;
     const monthly = rule ? investmentMonthlyOf(rule, profile) : monthlyDisposable(profile);
     if (monthly <= 0) return null;
-    const rate = RATE[profile.riskProfile] ?? 0.05;
+    const rate = profile.compoundAnnualRate ?? RATE[profile.riskProfile] ?? 0.05;
     const months = Math.max(1, profile.investHorizonMonths);
     const series = compoundSeries(monthly, rate, months);
     const final = series[series.length - 1].value;
@@ -86,6 +87,8 @@ export function VisualizerPage() {
             : `基于每月可支配 ¥${model.monthly.toLocaleString()} · 年化 ${(model.rate * 100).toFixed(0)}% · ${model.months} 个月`}
         </p>
       </div>
+
+      <RateSelector />
 
       {/* R5：图旁说明行（投资桶月额 + 年化 + 年序列含义） */}
       <div className="chart-caption">
