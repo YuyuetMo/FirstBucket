@@ -11,7 +11,8 @@ import { ReportButton } from '../features/report/ReportButton';
 import { allocateThreeBuckets, getThreeBucketRatios } from '../features/budget/threeBuckets';
 import { getRule } from '../@core/domain/rule';
 import { buildWaterfall } from '../features/budget/waterfall';
-import { consumptionActualOf } from '../features/plan/consumption';
+import { consumptionActualOf, allocationActualOf } from '../features/plan/consumption';
+import { prevMonthNeedsConfirm, getConfirm, prevYm, currentYm, ymLabel, cumulativeBuckets, confirmedStreak } from '../features/plan/monthlyLedger';
 
 /* ── Trend arrow icons ── */
 const ArrowUp = () => (
@@ -70,6 +71,14 @@ export function ProfilePage() {
     dashRatios.flexible,
   ) : null;
 
+  // v2.2 L2 执行反馈：连续月数 / 累计三桶 / 上月引导 / 上月快照复盘
+  const streak = confirmedStreak();
+  const cum = cumulativeBuckets();
+  const needPrevConfirm = prevMonthNeedsConfirm();
+  const prevConfirm = getConfirm(prevYm());
+  const thisPlanned = selectedRule ? allocationActualOf(selectedRule).reduce((s, a) => s + a.amount, 0) : 0;
+  const dashReservePct = three && three.reserveTarget > 0 ? Math.min(100, Math.round((cum.reserve / three.reserveTarget) * 100)) : 0;
+
   const metrics = [
     { label: '月收入', termId: 'monthlyIncome', value: `¥${income.toLocaleString()}`, accent: 'accent-blue' as const },
     { label: '可支配收入', value: `¥${Math.round(disp).toLocaleString()}`, accent: 'accent-green' as const },
@@ -88,13 +97,68 @@ export function ProfilePage() {
       {/* ── Welcome Bar ── */}
       <div className="welcome-bar">
         <div className="welcome-text">
-          <h1>你好，{profile?.name || '理财者'}！</h1>
+          <h1>
+            你好，{profile?.name || '理财者'}！
+            {streak > 0 && (
+              <span style={{ marginLeft: 10, fontSize: '13px', fontWeight: 600, color: 'var(--color-primary)', background: 'var(--color-info-soft, #EAF2FB)', borderRadius: 999, padding: '3px 12px', verticalAlign: 'middle' }}>
+                🔥 连续执行 {streak} 个月
+              </span>
+            )}
+          </h1>
           <p>以下是你的财务概览</p>
         </div>
         <div className="welcome-actions">
           <Link to="/plan" className="btn btn-primary btn-sm">⚡ 生成方案</Link>
         </div>
       </div>
+
+      {/* ── 上月未确认引导卡（v2.2 L2：跨月触点） ── */}
+      {needPrevConfirm && (
+        <div className="card" style={{ marginBottom: 18, borderLeft: '3px solid var(--color-warning, #F59E0B)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 18px' }}>
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>📒 {ymLabel(prevYm())}的执行还没确认</div>
+            <div style={{ fontSize: '12.5px', color: 'var(--color-text-secondary)' }}>
+              上月填过实际金额但没点「确认本月完成」——确认后才会计入备用金累计进度和连续执行月数。
+            </div>
+          </div>
+          <Link to="/plan" className="btn btn-primary btn-sm" style={{ flexShrink: 0 }}>去方案页确认 →</Link>
+        </div>
+      )}
+
+      {/* ── 月度复盘卡（v2.2 L2：上月快照 vs 本月实时） ── */}
+      {prevConfirm && (
+        <div className="card" style={{ marginBottom: 18 }}>
+          <div className="card-header">
+            <span className="card-title">月度复盘：{ymLabel(prevYm())} → {ymLabel(currentYm())}</span>
+            {cum.months > 0 && <span className="section-label" style={{ margin: 0 }}>已坚持 {cum.months} 个月</span>}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            {[
+              { label: '消费类实际', prev: prevConfirm.consumption, curr: Math.round(dashConsumption), lowerBetter: true },
+              { label: '已规划分配（储蓄/投资/保险）', prev: prevConfirm.planned, curr: Math.round(thisPlanned), lowerBetter: false },
+              { label: '可自由可支配', prev: prevConfirm.disposable, curr: Math.round(disp), lowerBetter: false },
+            ].map((m) => {
+              const delta = m.curr - m.prev;
+              const good = m.lowerBetter ? delta <= 0 : delta >= 0;
+              return (
+                <div key={m.label} style={{ background: 'var(--color-bg-page)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '10px 12px' }}>
+                  <div style={{ fontSize: '11.5px', color: 'var(--color-text-muted)', marginBottom: 4 }}>{m.label}</div>
+                  <div style={{ fontWeight: 700 }}>¥{m.curr.toLocaleString()}</div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                    上月 ¥{m.prev.toLocaleString()} ·{' '}
+                    <b style={{ color: delta === 0 ? 'var(--color-text-muted)' : good ? 'var(--accent-green)' : 'var(--color-danger)' }}>
+                      {delta === 0 ? '持平' : `${delta > 0 ? '+' : '−'}¥${Math.abs(delta).toLocaleString()}`}
+                    </b>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="muted-hint" style={{ marginTop: 10 }}>
+            本月数字为方案页实时填写值；月底在方案页点「确认本月完成」即可锁定为下月复盘基准。
+          </p>
+        </div>
+      )}
 
       {/* ── Health Score + Metrics ── */}
       <div className="dash-top">
@@ -164,6 +228,21 @@ export function ProfilePage() {
               <span className="three-bucket-sub">储蓄 / 投资 / 消费自由</span>
             </div>
           </div>
+          {cum.months > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: 4 }}>
+                <span style={{ color: 'var(--color-text-secondary)' }}>备用金累计（已确认 {cum.months} 个月）</span>
+                <b>¥{cum.reserve.toLocaleString()} / ¥{three.reserveTarget.toLocaleString()} · {dashReservePct}%</b>
+              </div>
+              <div style={{ height: 8, borderRadius: 999, background: 'var(--color-bg-page)', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+                <div style={{ width: `${dashReservePct}%`, height: '100%', borderRadius: 999, background: dashReservePct >= 100 ? 'var(--accent-green)' : 'var(--color-primary)', transition: 'width .3s' }} />
+              </div>
+              <div style={{ display: 'flex', gap: 14, marginTop: 6, fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                <span>灵活累计 <b style={{ color: 'var(--color-text)' }}>¥{cum.flexible.toLocaleString()}</b></span>
+                <span>自由累计 <b style={{ color: 'var(--color-text)' }}>¥{cum.free.toLocaleString()}</b></span>
+              </div>
+            </div>
+          )}
           {!selectedRule && (
             <p className="muted-hint" style={{ marginTop: 10 }}>
               未选择理财法则，此处按全部可支配收入估算；在「方案页」选择法则并填写各桶实际支出后，将显示精确的保命钱三桶分配。

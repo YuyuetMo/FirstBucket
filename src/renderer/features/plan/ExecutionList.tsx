@@ -12,6 +12,7 @@ import type { Bucket } from '../../@core/domain/bucket';
 import { allocateThreeBuckets, getThreeBucketRatios, setThreeBucketRatios } from '../budget/threeBuckets';
 import { buildWaterfall, CONSUMPTION_KEYS } from '../budget/waterfall';
 import { consumptionActualOf, allocationActualOf } from './consumption';
+import { currentYm, ymLabel, getConfirm, confirmMonth, unconfirmMonth, cumulativeBuckets, confirmedStreak } from './monthlyLedger';
 
 const yuan = (n: number) => `¥${Math.round(n).toLocaleString()}`;
 
@@ -30,6 +31,14 @@ export function ExecutionList({ profile, rule, comboBuckets, comboIncomeRule }: 
 
   // 三桶分配比例（应急金占比、灵活占剩余部分比例），用户可在卡片调节，持久化到 localStorage
   const [ratios, setRatios] = useState(getThreeBucketRatios());
+
+  // v2.2 执行闭环：月度账本（确认/撤销后 tick 强制重渲染，重新读 localStorage）
+  const [, setLedgerTick] = useState(0);
+  const bumpLedger = () => setLedgerTick((t) => t + 1);
+  const ym = currentYm();
+  const monthConfirm = getConfirm(ym);
+  const cum = cumulativeBuckets();
+  const streak = confirmedStreak();
 
   // 消费类实际月额（v1.7.2：来自当前法则逐桶填写；元组 [值, 是否旧档案回退]）
   const [consumptionActual, isFallback] = consumptionActualOf(profile, rule ?? comboIncomeRule);
@@ -73,6 +82,24 @@ export function ExecutionList({ profile, rule, comboBuckets, comboIncomeRule }: 
     ? allocationActualOf(rule).filter((a) => a.amount > 0)
     : [];
   const plannedTotal = plannedItems.reduce((s, a) => s + a.amount, 0);
+
+  // 「确认本月完成」：把当月执行结果存成快照，进入累计进度 / 复盘 / 连续月数
+  const handleConfirmMonth = () => {
+    confirmMonth(ym, {
+      ruleId: rule?.id ?? comboIncomeRule?.id ?? null,
+      consumption: Math.round(consumptionActual),
+      disposable: Math.round(wf.disposable),
+      planned: Math.round(plannedTotal),
+      reserve: tb.reserve,
+      flexible: tb.flexible,
+      free: tb.free,
+      reserveTarget: tb.reserveTarget,
+    });
+    bumpLedger();
+  };
+
+  // 备用金累计进度（只统计已确认月份；目标用当前口径）
+  const reservePct = tb.reserveTarget > 0 ? Math.min(100, Math.round((cum.reserve / tb.reserveTarget) * 100)) : 0;
 
   return (
     <div className="execution-list card">
@@ -219,6 +246,58 @@ export function ExecutionList({ profile, rule, comboBuckets, comboIncomeRule }: 
           ? `✅ 应急金已达标（每月入水已 ≥ 目标 ${yuan(tb.reserveTarget)}），灵活应急金与自由支配持续累积。`
           : `📊 应急金进度：每月 ${yuan(tb.reserve)} → 目标 ${yuan(tb.reserveTarget)}，约 ${tb.monthsToFull > 0 ? tb.monthsToFull.toFixed(1) : '∞'} 个月存满；此期间灵活应急金与自由支配同步积累，无需等满再开启。`}
       </div>
+
+      {/* 5) 执行进度（v2.2 L1：月度账本累计，只统计「已确认」的月份） */}
+      <div className="execution-section-title">
+        执行进度{cum.months > 0 ? `（已确认 ${cum.months} 个月${streak > 1 ? ` · 🔥 连续 ${streak} 个月` : ''}）` : ''}
+      </div>
+      {cum.months > 0 ? (
+        <>
+          <div style={{ margin: '4px 0 10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: 4 }}>
+              <span style={{ color: 'var(--color-text-secondary)' }}>备用金累计</span>
+              <b>{yuan(cum.reserve)} / {yuan(tb.reserveTarget)} · {reservePct}%</b>
+            </div>
+            <div style={{ height: 8, borderRadius: 999, background: 'var(--color-bg-page)', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+              <div style={{ width: `${reservePct}%`, height: '100%', borderRadius: 999, background: reservePct >= 100 ? 'var(--accent-green)' : 'var(--color-primary)', transition: 'width .3s' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+              <span>灵活应急金累计 <b style={{ color: 'var(--color-text)' }}>{yuan(cum.flexible)}</b></span>
+              <span>自由支配累计 <b style={{ color: 'var(--color-text)' }}>{yuan(cum.free)}</b></span>
+            </div>
+          </div>
+          {reservePct >= 100 && (
+            <div className="execution-note" style={{ color: 'var(--accent-green)' }}>🎉 备用金已存满目标 {yuan(tb.reserveTarget)}！安全垫已就位，可考虑把应急金比例调低，让更多钱流向灵活/自由桶。</div>
+          )}
+        </>
+      ) : (
+        <div className="execution-note">
+          尚无已确认的月份。填好本月各桶实际金额后，点击下方「确认本月完成」——备用金进度条、连续执行月数将从这里开始累积。
+        </div>
+      )}
+
+      {/* 5.1) 本月确认按钮 / 已确认态 */}
+      {monthConfirm ? (
+        <div className="execution-note" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: 'var(--color-info-soft, #EAF2FB)' }}>
+          <span>
+            ✅ <b>{ymLabel(ym)}已确认</b>（{new Date(monthConfirm.at).toLocaleDateString()}）：
+            备用金 +{yuan(monthConfirm.reserve)}、灵活 +{yuan(monthConfirm.flexible)}、自由 +{yuan(monthConfirm.free)} 已计入累计。
+          </span>
+          <button
+            onClick={() => { unconfirmMonth(ym); bumpLedger(); }}
+            style={{ cursor: 'pointer', flexShrink: 0, border: '1px solid var(--color-border)', borderRadius: 999, padding: '2px 10px', fontSize: '12px', background: 'transparent', color: 'var(--color-text-secondary)' }}
+          >撤销</button>
+        </div>
+      ) : (
+        <div style={{ marginTop: 10 }}>
+          <button className="btn btn-primary" onClick={handleConfirmMonth} disabled={tb.inflow <= 0}>
+            ✅ 确认本月完成（记入 {ymLabel(ym)} 账本）
+          </button>
+          <div style={{ fontSize: '11.5px', color: 'var(--color-text-muted)', marginTop: 4 }}>
+            确认后，本月三桶金额将计入累计进度；月底或跨月前确认即可，数字有变动可先撤销再重新确认。
+          </div>
+        </div>
+      )}
     </div>
   );
 }

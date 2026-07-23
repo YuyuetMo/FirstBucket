@@ -7,13 +7,15 @@
 // 5) 额外把 better_sqlite3.node 复制到交付物根目录（便于核查）
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, copyFileSync, existsSync, rmSync } from 'node:fs';
+import { cpSync, copyFileSync, existsSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'electron-builder';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
+// 版本号统一从 package.json 读取，避免手动打包时忘记同步 exe 文件版本
+const APP_VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8')).version;
 const RELEASE = join(ROOT, 'release', 'win-unpacked');
 const DELIVER = 'C:/Users/Admin/Desktop/vibe coding产出/FirstBucket_v2.0_交付物';
 const ICON = join(ROOT, 'build-resources', 'icon.ico');
@@ -65,8 +67,8 @@ async function main() {
     '--set-icon', ICON,
     '--set-version-string', 'FileDescription', 'FirstBucket',
     '--set-version-string', 'ProductName', 'FirstBucket',
-    '--set-file-version', '2.0.0',
-    '--set-product-version', '2.0.0',
+    '--set-file-version', APP_VERSION,
+    '--set-product-version', APP_VERSION,
     EXE,
   ]);
 

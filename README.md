@@ -7,9 +7,9 @@
 [![React](https://img.shields.io/badge/React-18.x-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)]()
-[![Release](https://img.shields.io/badge/release-v2.1.0-blue)](https://github.com/YuyuetMo/FirstBucket/releases)
+[![Release](https://img.shields.io/badge/release-v2.2.0-blue)](https://github.com/YuyuetMo/FirstBucket/releases)
 
-> 📦 **Windows 桌面安装包**：前往 [Releases](https://github.com/YuyuetMo/FirstBucket/releases) 下载 `FirstBucket_v2.1.zip`，解压后双击 `FirstBucket.exe` 即可运行（无需 Node 环境）。
+> 📦 **Windows 桌面安装包**：前往 [Releases](https://github.com/YuyuetMo/FirstBucket/releases) 下载 `FirstBucket_v2.2.zip`，解压后双击 `FirstBucket.exe` 即可运行（无需 Node 环境）。
 
 ---
 
@@ -39,11 +39,13 @@ FirstBucket 不替你炒股，也不做投资建议。它做的事很简单：
 | **🧩 自定义法则 (R8)** | 用户自填比例（自动校验合计 100%），参与组合与方案计算 |
 | **🔀 组合方案** | 多法则叠加（收入级 + 投资级），结果直接展示真实资产桶金额 |
 | **🧪 What-if 推演** | 参数隔离在面板内，不影响全局基线，随时"假如…会怎样" |
-  - 消费类实际（方案页各消费桶填的本月金额；未填则回退固定+变动支出）
-  - 月负债（如有）
 | **📤 数据导出** | 支持 CSV / PDF 导出 |
 | **✍️ 实际金额对比** | 方案页逐桶填写「本月实际」，对比法则建议：消费类显示「省 / 超」，储蓄/投资/保险显示「多存 / 还差」（正向反馈） |
 | **🪣 三桶并行积累** | 保命钱三桶支持并行：应急金投入比例 / 灵活比例双滑块可调，不再强制先存满应急金 |
+| **📒 月度账本** | 实际金额按月存档，跨月自动开新账页、历史可回看，旧数据自动迁移不丢失 |
+| **📊 累计进度** | 执行清单显示备用金累计进度条（已存 ¥X / 目标 ¥Y · N%）+ 灵活/自由累计余额 |
+| **✅ 本月确认** | 「确认本月完成」按钮把当月三桶金额锁定入账、计入累计，可撤销重记 |
+| **🔥 执行反馈** | Dashboard 连续执行 N 个月徽章 + 上月未确认引导卡 + 月度复盘卡（上月 vs 本月对比） |
 | **🔄 检查更新** | 一键跳转 GitHub Releases，应用内外部链接用系统默认浏览器打开 |
 
 ---
